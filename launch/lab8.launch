@@ -1,0 +1,8 @@
+<launch>
+    <node name="stage" pkg="stage_ros" type="stageros" args="$(find lab8rev)/world/playground.world" />
+    <node name="evader" pkg="lab8rev" type="astar.py" output="screen" >
+    	<param name="goalx" type="double" value="4.5" />
+    	<param name="goaly" type="double" value="9.0" />
+  	</node>
+
+</launch>
