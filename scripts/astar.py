@@ -41,8 +41,18 @@ def callback(odom):
     theta = odom.pose.pose.orientation.z
     return 0
 
-# A start algorithm : O(mn*log(mn)) > returns path
-import heapq
+def vis_path(path):
+    
+    vis_map = np.where(map==1, '1', '0')
+    
+    for node in path:
+        if node != start_node and node != goal_node:
+            vis_map[node] = '*'
+        
+    for row in vis_map:
+        print(" ".join(row))
+    
+    return 0
 
 def get_ancestors(parent_childs):
     # parent lookup dictionary
@@ -60,29 +70,18 @@ def get_ancestors(parent_childs):
     
     return path
 
+
 def aStar(map_):
-
-    p_map = np.pad(map_, pad_width=1, mode='constant', constant_values='O')
     
-    global start_node, goal_node
-
     open_list = []
     open_dic = {}
     closed_list = set()
     parent_childs = {}
 
-    # start node
-    s_indices = np.where(p_map=='S')
-    # Convert to a tuple (i, j)
-    s_node = tuple(zip(s_indices[0], s_indices[1]))[0]
-    start_node = int(s_node[0]), int(s_node[1])
+    # start node indicies
     i, j = start_node
 
-    # goal node
-    g_indices = np.where(p_map=='G')
-    # Convert to a tuple (i, j)
-    g_node = tuple(zip(g_indices[0], g_indices[1]))[0]
-    goal_node = int(g_node[0]), int(g_node[1])
+    # goal node indicies
     x, y = goal_node
 
     # g, h costs of start node
@@ -105,7 +104,7 @@ def aStar(map_):
         closed_list.add(current_node)
 
         # if path found exit loop
-        if current_node == g_node:
+        if current_node == goal_node:
             print("shortest path found")
             break
 
@@ -121,12 +120,16 @@ def aStar(map_):
         
         # exploring neighbours of the current node
         for neighbour in neighbours:
+            
+            # out of bounds neighbour
+            if not (0 <= neighbour[0] < map_.shape[0] and 0 <= neighbour[1] < map_.shape[1]):
+                continue
 
             # Convert to Python int
             neighbour = (int(neighbour[0]), int(neighbour[1]))
 
             # not valid neighbour
-            if p_map[neighbour] == 'O' or neighbour in closed_list:
+            if map_[neighbour] == 1 or neighbour in closed_list:
                 continue
 
             if neighbour not in open_dic.keys() or gcost_neighbour < open_dic[neighbour]:
@@ -173,49 +176,60 @@ def go_to(goalx, goaly):
 
 
 def main():
+
+    global start_node, goal_node
+
     rospy.init_node('evader', anonymous = False)
     pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber("/odom", Odometry, callback)
+    rospy.sleep(1)
 
     # goal parameters
     gx = rospy.get_param('~goalx')
     gy = rospy.get_param('~goaly')
 
+    # start node (r, c)
+    start_node = round(9.6 - y), round(x + 8.6)
+    # goal node (r, c)
+    goal_node = round(9.6 - gy), round(gx + 8.6)
 
-    # start node (n,m)
-    start_node = round(x + 8.6), round(9.4 - y)
-    # goal node (n,m)
-    goal_node = round(gx + 8.6), round(9.4 - gy)
+    print(start_node, goal_node)
 
     # list of path nodes in grid (n,m)
     path = aStar(map)  
+    print(path)
 
-    idx = 0
+    # visulaize path
+    vis_path(path)
+
+    idx = 1
     atGoal = False
     rate = rospy.Rate(10) 
-    rospy.sleep(1)
     while not atGoal:
 
+        
         if path == []:
             print("path not found!")
             break
 
-        if linearDist < 0.5:
+        if idx > len(path)-1:
             print("at Goal!")
+            atGoal = True
             linVel, angVel = 0, 0
             break
 
         # defining variable goal coordinates
-        (n,m) = path[idx]
-        idx += 1
-        node_x, node_y = n-8.5, 9.5-m
+        (r, c) = path[idx]
+        node_x, node_y = c-8.5, 9.5-r
 
         # go to the given path coorinate
-        linVel, angVel = go_to(node_x, node_y)
+        linear_vel, angular_vel = go_to(node_x, node_y)
+        if linearDist < 0.1:
+            idx += 1
 
         # define velocity message
-        vel.linear.x = linVel
-        vel.angular.x = angVel
+        vel.linear.x = linear_vel
+        vel.angular.z = angular_vel
 
         pub.publish(vel)
         rate.sleep()
